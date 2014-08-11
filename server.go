@@ -25,7 +25,12 @@ func NewFTPServer() (*FTPServer, error) {
 		return nil, err
 	}
 
-	server.Filesystem = &Filesystem{}
+	server.Filesystem = &Filesystem{
+		Directories: []string{
+			"/",
+		},
+		Files: map[string]*File{},
+	}
 	return server, nil
 }
 

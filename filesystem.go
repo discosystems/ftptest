@@ -2,7 +2,7 @@ package ftptest
 
 import (
 	"os"
-	"path/filepath"
+	filepath "path"
 	"strings"
 	"sync"
 	"time"
@@ -38,18 +38,21 @@ func (f *Filesystem) MkDir(path string) error {
 	}
 
 	parent := filepath.Dir(path)
-	parents := strings.Split(parent, "/")
 
-	for i, _ := range parents {
-		path := strings.Join(parents[:i-1], "/")
+	if parent != "." && parent != "/" {
+		parents := strings.Split(parent, "/")
+		for i, _ := range parents {
+			path := strings.Join(parents[:i], "/")
 
-		if err := f.DirExists(path); err != nil {
-			return ErrNotFound
+			if err := f.DirExists(path); err != nil {
+				return ErrNotFound
+			}
 		}
 	}
 
 	f.Directories = append(f.Directories, filepath.Clean(path))
 	return nil
+
 }
 
 // Recursively remove a directory
@@ -139,9 +142,6 @@ func (f *Filesystem) LastModified(path string) (time.Time, error) {
 
 // Directory exists?
 func (f *Filesystem) DirExists(path string) error {
-	f.Mutex.RLock()
-	defer f.Mutex.RUnlock()
-
 	for _, directory := range f.Directories {
 		if directory == path {
 			return nil
@@ -174,6 +174,7 @@ func (f *Filesystem) DirContents(path string) ([]*File, error) {
 	}
 
 	response := make([]*File, 0)
+
 	for name, file := range f.Files {
 		if strings.HasPrefix(name, path) {
 			if parts := strings.Split(name[len(path):], "/"); len(parts) == 1 {

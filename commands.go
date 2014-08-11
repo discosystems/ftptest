@@ -214,7 +214,7 @@ func (c *commandLIST) Execute(conn *Connection, args string) error {
 
 	contents, err := conn.Filesystem.DirContents(path)
 	if err != nil {
-		return err
+		contents = make([]*File, 0)
 	}
 
 	var buffer bytes.Buffer
@@ -251,7 +251,7 @@ func (c *commandNLST) Execute(conn *Connection, args string) error {
 
 	contents, err := conn.Filesystem.DirContents(path)
 	if err != nil {
-		return err
+		contents = make([]*File, 0)
 	}
 
 	var buffer bytes.Buffer

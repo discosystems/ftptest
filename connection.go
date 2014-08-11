@@ -3,7 +3,7 @@ package ftptest
 import (
 	"bufio"
 	"net"
-	"path/filepath"
+	filepath "path"
 	"strconv"
 	"strings"
 )
