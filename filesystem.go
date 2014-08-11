@@ -33,21 +33,22 @@ func (f *Filesystem) MkDir(path string) error {
 	f.Mutex.Lock()
 	defer f.Mutex.Unlock()
 
-	if _, exists := directories[path]; exists {
+	if err := f.DirExists(path); err == nil {
 		return ErrAlreadyExists
 	}
 
 	parent := filepath.Dir(path)
 	parents := strings.Split(parent, "/")
 
-	for i, directory := range parents {
+	for i, _ := range parents {
 		path := strings.Join(parents[:i-1], "/")
-		if _, ok := directories[path]; !ok {
+
+		if err := f.DirExists(path); err != nil {
 			return ErrNotFound
 		}
 	}
 
-	directories = append(directories, filepath.Clean(path))
+	f.Directories = append(f.Directories, filepath.Clean(path))
 	return nil
 }
 
@@ -56,7 +57,7 @@ func (f *Filesystem) RmDir(path string) error {
 	f.Mutex.Lock()
 	defer f.Mutex.Unlock()
 
-	if _, ok := f.Directories[path]; !ok {
+	if err := f.DirExists(path); err != nil {
 		return ErrNotFound
 	}
 
@@ -67,10 +68,8 @@ func (f *Filesystem) RmDir(path string) error {
 	}
 
 	for i, directory := range f.Directories {
-		if strings.HasPrefix(name, filepath.Clean(path)) {
-			copy(f.Directories[i:], f.Directories[i+1:])
-			f.Directories[len(f.Directories)-1] = nil
-			f.Directories = f.Directories[:len(f.Directories)-1]
+		if strings.HasPrefix(directory, filepath.Clean(path)) {
+			f.Directories = f.Directories[:i+copy(f.Directories[i:], f.Directories[i+1:])]
 		}
 	}
 
@@ -84,7 +83,7 @@ func (f *Filesystem) WriteFile(path string, data []byte) error {
 
 	dir := filepath.Dir(path)
 
-	if _, ok := f.Directories[dir]; !ok {
+	if err := f.DirExists(dir); err != nil {
 		return ErrNoParent
 	}
 
@@ -142,12 +141,14 @@ func (f *Filesystem) LastModified(path string) (time.Time, error) {
 func (f *Filesystem) DirExists(path string) error {
 	f.Mutex.RLock()
 	defer f.Mutex.RUnlock()
-	_, exists := f.Directories[path]
-	if !exists {
-		return ErrNotFound
+
+	for _, directory := range f.Directories {
+		if directory == path {
+			return nil
+		}
 	}
 
-	return nil
+	return ErrNotFound
 }
 
 // Remove a file
@@ -168,8 +169,7 @@ func (f *Filesystem) DirContents(path string) ([]*File, error) {
 	f.Mutex.RLock()
 	defer f.Mutex.RUnlock()
 
-	_, exists := f.Directories[path]
-	if !exists {
+	if err := f.DirExists(path); err != nil {
 		return nil, ErrNotFound
 	}
 
@@ -184,7 +184,7 @@ func (f *Filesystem) DirContents(path string) ([]*File, error) {
 
 	for _, directory := range f.Directories {
 		if strings.HasPrefix(directory, path) {
-			if parts := strings.Split(name[len(path):], "/"); len(parts) == 1 {
+			if parts := strings.Split(directory[len(path):], "/"); len(parts) == 1 {
 				response = append(response, &File{
 					Type: "directory",
 					Name: filepath.Base(path),
@@ -202,9 +202,8 @@ func (f *Filesystem) Rename(from string, to string) error {
 	defer f.Mutex.Unlock()
 
 	dir := filepath.Dir(to)
-	_, exists := f.Directories[dir]
-	if !exists {
-		return nil, ErrNotFound
+	if err := f.DirExists(dir); err != nil {
+		return ErrNotFound
 	}
 
 	file, err := f.ReadFile(from)

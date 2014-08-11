@@ -2,7 +2,6 @@ package ftptest
 
 import (
 	"bufio"
-	"errors"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -24,7 +23,7 @@ type Connection struct {
 func (c *Connection) WriteMessage(code int, message string) {
 	// Format the message
 	sCode := strconv.Itoa(code)
-	c.Connection.Write(sCode + " " + message + "\r\n")
+	c.Connection.Write([]byte(sCode + " " + message + "\r\n"))
 }
 
 func (c *Connection) ChangeWorkingDirectory(path string) error {
@@ -42,12 +41,13 @@ func (c *Connection) ChangeWorkingDirectory(path string) error {
 	}
 
 	c.WorkingDirectory = new_directory
+	return nil
 }
 
 func (c *Connection) BuildPath(path string) string {
 	path = filepath.Join(c.WorkingDirectory, path)
 
-	if path[0] != "/" {
+	if path[0] != '/' {
 		path = "/" + path
 	}
 
@@ -61,12 +61,12 @@ func (c *Connection) SendDataThroughSocket(data string) {
 	c.DataSocket.Close()
 
 	message := "Closing data connection, sent " + strconv.Itoa(bytes) + " bytes"
-	c.Connection.WriteMessage(226, message)
+	c.WriteMessage(226, message)
 }
 
 func (c *Connection) ParseIncoming() (string, string, error) {
 	// Read the next line
-	line, err := c.Buffer.ReadString("\n")
+	line, err := c.Buffer.ReadString('\n')
 	if err != nil {
 		// Might be EOF
 		return "", "", err
@@ -75,8 +75,12 @@ func (c *Connection) ParseIncoming() (string, string, error) {
 	// Split command and arguments
 	parts := strings.SplitN(strings.Trim(line, "\r\n"), " ", 2)
 
+	if len(parts) == 1 {
+		return parts[0], "", nil
+	}
+
 	// Return first argument - the command and rest - the parameters
-	return params[0], strings.TrimSpace(params[1]), nil
+	return parts[0], strings.TrimSpace(parts[1]), nil
 }
 
 func (c *Connection) Serve() {
@@ -111,12 +115,12 @@ func (c *Connection) Serve() {
 		}
 
 		// Execute the command
-		err = command.Handle(c, args)
+		err = command.Execute(c, args)
 		if err == ErrQuitRequest {
 			c.Connection.Close()
 			break
 		} else if err != nil {
-			c.WriteMessage(550, err.String())
+			c.WriteMessage(550, err.Error())
 		}
 	}
 }

@@ -20,7 +20,11 @@ func NewFTPServer() (*FTPServer, error) {
 		return nil, err
 	}
 
-	server.Listener = net.ListenTCP("tcp", address)
+	server.Listener, err = net.ListenTCP("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+
 	server.Filesystem = &Filesystem{}
 	return server, nil
 }

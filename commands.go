@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"net"
-	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/jehiah/go-strftime"
 )
@@ -15,42 +14,42 @@ import (
 type Command interface {
 	RequiresParams() bool
 	RequiresAuth() bool
-	Handle(conn *Connection, args string) error
+	Execute(conn *Connection, args string) error
 }
 
 // Commands map
 var commands = map[string]Command{
-	"ALLO": commandALLO{},
-	"CDUP": commandCDUP{},
-	"CWD":  commandCWD{},
-	"DELE": commandDELE{},
-	"EPRT": commandEPRT{},
-	"EPSV": commandEPSV{},
-	"LIST": commandLIST{},
-	"NLST": commandNLST{},
-	"MDTM": commandMDTM{},
-	"MKD":  commandMKD{},
-	"MODE": commandMODE{},
-	"NOOP": commandNOOP{},
-	"PASS": commandPASS{},
-	"PASV": commandPASV{},
-	"PORT": commandPORT{},
-	"PWD":  commandPWD{},
-	"QUIT": commandQUIT{},
-	"RETR": commandRETR{},
-	"RNFR": commandRNFR{},
-	"RNTO": commandRNTO{},
-	"RMD":  commandRMD{},
-	"SIZE": commandSIZE{},
-	"STOR": commandSTOR{},
-	"STRU": commandSTRU{},
-	"SYST": commandSYST{},
-	"TYPE": commandTYPE{},
-	"USER": commandUSER{},
-	"XCUP": commandCDUP{},
-	"XCWD": commandCWD{},
-	"XPWD": commandPWD{},
-	"XRMD": commandRMD{},
+	"ALLO": &commandALLO{},
+	"CDUP": &commandCDUP{},
+	"CWD":  &commandCWD{},
+	"DELE": &commandDELE{},
+	"EPRT": &commandEPRT{},
+	"EPSV": &commandEPSV{},
+	"LIST": &commandLIST{},
+	"NLST": &commandNLST{},
+	"MDTM": &commandMDTM{},
+	"MKD":  &commandMKD{},
+	"MODE": &commandMODE{},
+	"NOOP": &commandNOOP{},
+	"PASS": &commandPASS{},
+	"PASV": &commandPASV{},
+	"PORT": &commandPORT{},
+	"PWD":  &commandPWD{},
+	"QUIT": &commandQUIT{},
+	"RETR": &commandRETR{},
+	"RNFR": &commandRNFR{},
+	"RNTO": &commandRNTO{},
+	"RMD":  &commandRMD{},
+	"SIZE": &commandSIZE{},
+	"STOR": &commandSTOR{},
+	"STRU": &commandSTRU{},
+	"SYST": &commandSYST{},
+	"TYPE": &commandTYPE{},
+	"USER": &commandUSER{},
+	"XCUP": &commandCDUP{},
+	"XCWD": &commandCWD{},
+	"XPWD": &commandPWD{},
+	"XRMD": &commandRMD{},
 }
 
 // ALLO FTP commmand is a ping
@@ -65,8 +64,24 @@ func (c *commandALLO) RequiresAuth() bool {
 }
 
 func (c *commandALLO) Execute(conn *Connection, args string) error {
+	conn.WriteMessage(202, "Obsolete")
+	return nil
+}
+
+// CDUP goes to the parent directory.
+type commandCDUP struct{}
+
+func (c *commandCDUP) RequiresParams() bool {
+	return false
+}
+
+func (c *commandCDUP) RequiresAuth() bool {
+	return true
+}
+
+func (c *commandCDUP) Execute(conn *Connection, args string) error {
 	cmd := &commandCWD{}
-	return cmd.Execute(conn, args)
+	return cmd.Execute(conn, "..")
 }
 
 // CWD command changes the current working directory
@@ -81,7 +96,7 @@ func (c *commandCWD) RequiresAuth() bool {
 }
 
 func (c *commandCWD) Execute(conn *Connection, args string) error {
-	err := c.ChangeWorkingDirectory(args)
+	err := conn.ChangeWorkingDirectory(args)
 	if err != nil {
 		return err
 	}
@@ -177,7 +192,7 @@ func (c *commandEPSV) Execute(conn *Connection, args string) error {
 
 	conn.DataSocket = socket
 
-	conn.WriteMessage(200, "Entering Extended Passive Mode (|||"+strconv.Itoa(socket.Port())+"|)")
+	conn.WriteMessage(200, "Entering Extended Passive Mode (|||"+strconv.Itoa(socket.GetPort())+"|)")
 	return nil
 }
 
@@ -193,7 +208,7 @@ func (c *commandLIST) RequiresAuth() bool {
 }
 
 func (c *commandLIST) Execute(conn *Connection, args string) error {
-	conn.writeMessage(150, "Opening ASCII mode data connection for file list")
+	conn.WriteMessage(150, "Opening ASCII mode data connection for file list")
 
 	path := conn.BuildPath(args)
 
@@ -230,7 +245,7 @@ func (c *commandNLST) RequiresAuth() bool {
 }
 
 func (c *commandNLST) Execute(conn *Connection, args string) error {
-	conn.writeMessage(150, "Opening ASCII mode data connection for file list")
+	conn.WriteMessage(150, "Opening ASCII mode data connection for file list")
 
 	path := conn.BuildPath(args)
 
@@ -291,9 +306,9 @@ func (c *commandMKD) Execute(conn *Connection, args string) error {
 	path := conn.BuildPath(args)
 
 	if err := conn.Filesystem.MkDir(path); err == nil {
-		conn.writeMessage(257, "Directory created")
+		conn.WriteMessage(257, "Directory created")
 	} else {
-		conn.writeMessage(550, "Action not taken")
+		conn.WriteMessage(550, "Action not taken")
 	}
 
 	return nil
@@ -337,17 +352,18 @@ func (c *commandNOOP) Execute(conn *Connection, args string) error {
 }
 
 // PASS placeholder command. Processes the password.
-type commandPass struct{}
+type commandPASS struct{}
 
-func (c *commandPass) RequiresParams() bool {
+func (c *commandPASS) RequiresParams() bool {
 	return true
 }
 
-func (c *commandPass) RequiresAuth() bool {
+func (c *commandPASS) RequiresAuth() bool {
 	return false
 }
 
-func (c *commandPass) Execute(conn *Connection, args string) error {
+func (c *commandPASS) Execute(conn *Connection, args string) error {
+	conn.Authenticated = true
 	conn.WriteMessage(230, "Password ok, continue")
 	return nil
 }
@@ -372,10 +388,10 @@ func (c *commandPASV) Execute(conn *Connection, args string) error {
 
 	conn.DataSocket = socket
 
-	p1 := socket.Port() / 256
-	p2 := socket.Port() - (p1 * 256)
+	p1 := socket.GetPort() / 256
+	p2 := socket.GetPort() - (p1 * 256)
 
-	quads := strings.Split(socket.Host(), ".")
+	quads := strings.Split(socket.GetHost(), ".")
 	target := fmt.Sprintf("(%s,%s,%s,%s,%d,%d)", quads[0], quads[1], quads[2], quads[3], p1, p2)
 	msg := "Entering Passive Mode " + target
 
@@ -510,7 +526,7 @@ func (c *commandRNTO) RequiresAuth() bool {
 func (c *commandRNTO) Execute(conn *Connection, args string) error {
 	path := conn.BuildPath(args)
 
-	if err := conn.driver.Rename(conn.RenameFrom, path); err == nil {
+	if err := conn.Filesystem.Rename(conn.RenameFrom, path); err == nil {
 		conn.WriteMessage(250, "File renamed")
 	} else {
 		conn.WriteMessage(550, "Action not taken")
@@ -582,12 +598,6 @@ func (c *commandSTOR) Execute(conn *Connection, args string) error {
 
 	conn.WriteMessage(150, "Data transfer starting")
 
-	tmpFile, err := ioutil.TempFile("", "stor")
-	if err != nil {
-		conn.WriteMessage(450, "Error during transfer")
-		return nil
-	}
-
 	data, err := ioutil.ReadAll(conn.DataSocket)
 	if err != nil {
 		conn.WriteMessage(450, "Error during transfer")
@@ -605,17 +615,17 @@ func (c *commandSTOR) Execute(conn *Connection, args string) error {
 }
 
 // STRU is an obsolete command, only one parameter is used nowadays.
-type commandStru struct{}
+type commandSTRU struct{}
 
-func (c *commandStru) RequiresParams() bool {
+func (c *commandSTRU) RequiresParams() bool {
 	return true
 }
 
-func (c *commandStru) RequiresAuth() bool {
+func (c *commandSTRU) RequiresAuth() bool {
 	return true
 }
 
-func (c *commandStru) Execute(conn *Connection, args string) error {
+func (c *commandSTRU) Execute(conn *Connection, args string) error {
 	if strings.ToUpper(args) == "F" {
 		conn.WriteMessage(200, "OK")
 	} else {

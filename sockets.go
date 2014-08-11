@@ -7,15 +7,15 @@ import (
 )
 
 type DataSocket interface {
-	Host() string
-	Port() int
+	GetHost() string
+	GetPort() int
 	Read(p []byte) (n int, err error)
 	Write(p []byte) (n int, err error)
 	Close() error
 }
 
 type ActiveSocket struct {
-	Connection *net.Conn
+	Connection net.Conn
 	Host       string
 	Port       int
 }
@@ -39,11 +39,11 @@ func NewActiveSocket(host string, port int) (DataSocket, error) {
 	return socket, nil
 }
 
-func (a *ActiveSocket) Host() string {
+func (a *ActiveSocket) GetHost() string {
 	return a.Host
 }
 
-func (a *ActiveSocket) Port() int {
+func (a *ActiveSocket) GetPort() int {
 	return a.Port
 }
 
@@ -60,21 +60,17 @@ func (a *ActiveSocket) Close() error {
 }
 
 type PassiveSocket struct {
-	Connection *net.Conn
+	Connection net.Conn
 	Port       int
-	Ingress    chan []byte
-	Egress     chan []byte
 }
 
 func NewPassiveSocket() (DataSocket, error) {
 	socket := &PassiveSocket{}
-	socket.ingress = make(chan []byte)
-	socket.egress = make(chan []byte)
 
 	go socket.ListenAndServe()
 
 	for {
-		if socket.Port() > 0 {
+		if socket.GetPort() > 0 {
 			break
 		}
 
@@ -84,28 +80,28 @@ func NewPassiveSocket() (DataSocket, error) {
 	return socket, nil
 }
 
-func (p *PassiveSocket) Host() string {
+func (p *PassiveSocket) GetHost() string {
 	return "127.0.0.1"
 }
 
-func (p *PassiveSocket) Port() int {
-	return a.Port
+func (p *PassiveSocket) GetPort() int {
+	return p.Port
 }
 
 func (p *PassiveSocket) Read(b []byte) (int, error) {
-	if socket.waitUntilOpen() == false {
+	if p.waitUntilOpen() == false {
 		return 0, ErrDataSocketUnavailable
 	}
 
-	return p.Connection.Read(p)
+	return p.Connection.Read(b)
 }
 
 func (p *PassiveSocket) Write(b []byte) (int, error) {
-	if socket.waitUntilOpen() == false {
+	if p.waitUntilOpen() == false {
 		return 0, ErrDataSocketUnavailable
 	}
 
-	return p.Connection.Write(p)
+	return p.Connection.Write(b)
 }
 
 func (p *PassiveSocket) Close() error {
